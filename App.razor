@@ -1,0 +1,48 @@
+@using System.Reflection
+@using Microsoft.AspNetCore.Components.WebAssembly.Services
+@inject LazyAssemblyLoader AssemblyLoader
+@inject FeatureLoadState LoadState
+@inject ILogger<App> Logger
+
+<Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="@loadedAssemblies"
+        OnNavigateAsync="LoadFeatureAsync" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <Navigating>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <h1>Загрузка графика</h1>
+            <p role="status">Загружаются данные страницы продаж</p>
+        </LayoutView>
+    </Navigating>
+</Router>
+
+@code {
+    private readonly List<Assembly> loadedAssemblies = [];
+
+    private async Task LoadFeatureAsync(NavigationContext context)
+    {
+        LoadState.Error = null;
+        var path = context.Path.Split('?', '#')[0].Trim('/');
+        if (LoadState.IsLoaded || !(path.Equals("saleschart", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("saleschart/", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        try
+        {
+            var assemblies = await AssemblyLoader.LoadAssembliesAsync(["SalesReportFeature.wasm"]);
+            loadedAssemblies.AddRange(assemblies.Where(assembly => !loadedAssemblies.Contains(assembly)));
+            LoadState.IsLoaded = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Не удалось загрузить сборку графика");
+            LoadState.Error = "Не удалось загрузить график, проверьте подключение и обновите страницу";
+        }
+
+        context.CancellationToken.ThrowIfCancellationRequested();
+    }
+}
